@@ -1,0 +1,103 @@
+menu "ESP32 WAV Player"
+
+    config STORAGE_MOUNT_POINT
+        string "SD card mount point"
+        default "/sdcard"
+
+    config PLAYER_WAV_PATH
+        string "Loop WAV path"
+        default "/sdcard/loop.wav"
+
+    config PLAYER_READ_BUFFER_SIZE
+        int "WAV read buffer size (bytes)"
+        range 1024 32768
+        default 4096
+
+    config PLAYER_TASK_STACK_SIZE
+        int "Playback task stack size"
+        range 4096 16384
+        default 6144
+
+    config PLAYER_TASK_PRIORITY
+        int "Playback task priority"
+        range 1 24
+        default 5
+
+    config PLAYER_VOLUME_PERCENT
+        int "Playback volume (%)"
+        range 0 100
+        default 90
+
+    config PLAYER_RETRY_DELAY_MS
+        int "Retry delay after playback error (ms)"
+        range 250 30000
+        default 2000
+
+    config PLAYER_UPDATE_TIMEOUT_MS
+        int "Wait for playback stop before update (ms)"
+        range 1000 60000
+        default 15000
+
+    config SD_SPI_PIN_MOSI
+        int "SD SPI MOSI GPIO"
+        default 15 if IDF_TARGET_ESP32S3
+        default 15
+
+    config SD_SPI_PIN_MISO
+        int "SD SPI MISO GPIO"
+        default 16 if IDF_TARGET_ESP32S3
+        default 16
+
+    config SD_SPI_PIN_SCLK
+        int "SD SPI SCLK GPIO"
+        default 17 if IDF_TARGET_ESP32S3
+        default 17
+
+    config SD_SPI_PIN_CS
+        int "SD SPI CS GPIO"
+        default 18 if IDF_TARGET_ESP32S3
+        default 18
+
+    config SD_SPI_FREQUENCY_KHZ
+        int "SD SPI clock (kHz)"
+        range 400 20000
+        default 8000
+
+    config I2S_DOUT_PIN
+        int "I2S DOUT GPIO"
+        default 4 if IDF_TARGET_ESP32S3
+        default 4
+
+    config I2S_BCLK_PIN
+        int "I2S BCLK GPIO"
+        default 5 if IDF_TARGET_ESP32S3
+        default 5
+
+    config I2S_WS_PIN
+        int "I2S WS/LRCLK GPIO"
+        default 6 if IDF_TARGET_ESP32S3
+        default 6
+
+    config I2S_MCLK_PIN
+        int "I2S MCLK GPIO (-1 disables MCLK)"
+        default -1
+
+    config WIFI_AP_SSID
+        string "SoftAP SSID"
+        default "ESP32-WAV-Player"
+
+    config WIFI_AP_PASSWORD
+        string "SoftAP password (empty for open network)"
+        default "wavplayer"
+
+    config WIFI_AP_CHANNEL
+        int "SoftAP channel"
+        range 1 13
+        default 6
+
+    config WIFI_AP_MAX_CONNECTIONS
+        int "SoftAP max clients"
+        range 1 8
+        default 4
+
+endmenu

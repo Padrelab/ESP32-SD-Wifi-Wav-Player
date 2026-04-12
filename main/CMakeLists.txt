@@ -1,0 +1,28 @@
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "audio_output.c"
+        "audio_pcm.c"
+        "audio_sdcard.c"
+        "audio_storage_stream.c"
+        "audio_wav.c"
+        "loop_player.c"
+        "web_server.c"
+        "wifi_manager.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        app_update
+        esp_app_format
+        esp_driver_i2s
+        esp_driver_sdspi
+        esp_event
+        esp_http_server
+        esp_netif
+        esp_timer
+        esp_wifi
+        fatfs
+        freertos
+        nvs_flash
+        sdmmc
+)
