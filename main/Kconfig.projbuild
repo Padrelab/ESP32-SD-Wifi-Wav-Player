@@ -11,7 +11,7 @@ menu "ESP32 WAV Player"
     config PLAYER_READ_BUFFER_SIZE
         int "WAV read buffer size (bytes)"
         range 1024 32768
-        default 4096
+        default 6144
 
     config PLAYER_TASK_STACK_SIZE
         int "Playback task stack size"
@@ -21,7 +21,7 @@ menu "ESP32 WAV Player"
     config PLAYER_TASK_PRIORITY
         int "Playback task priority"
         range 1 24
-        default 5
+        default 10
 
     config PLAYER_VOLUME_PERCENT
         int "Playback volume (%)"
@@ -61,7 +61,7 @@ menu "ESP32 WAV Player"
     config SD_SPI_FREQUENCY_KHZ
         int "SD SPI clock (kHz)"
         range 400 20000
-        default 8000
+        default 16000
 
     config I2S_DOUT_PIN
         int "I2S DOUT GPIO"

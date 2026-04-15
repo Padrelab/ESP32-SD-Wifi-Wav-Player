@@ -1,0 +1,134 @@
+Command: /Users/padremac/.espressif/python_env/idf5.5_py3.14_env/bin/python /Users/padremac/esp/esp-idf/tools/idf_monitor.py -p /dev/cu.usbmodem1101 -b 115200 --toolchain-prefix xtensa-esp32s3-elf- --target esp32s3 --revision 0 /Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/esp32_sd_wifi_wav_player.elf /Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader/bootloader.elf -m '/Users/padremac/.espressif/python_env/idf5.5_py3.14_env/bin/python' '/Users/padremac/esp/esp-idf/tools/idf.py' '-B' 'build-n16r8' '-p' '/dev/cu.usbmodem1101'
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x8 (SPI_FAST_FLASH_BOOT)
+Saved PC:0x4037aec2
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x152c
+load:0x403c8700,len:0xce4
+load:0x403cb700,len:0x2efc
+entry 0x403c8920
+[0;32mI (24) boot: ESP-IDF v5.5.3 2nd stage bootloader[0m
+[0;32mI (24) boot: compile time Apr 15 2026 01:57:19[0m
+[0;32mI (25) boot: Multicore bootloader[0m
+[0;32mI (25) boot: chip revision: v0.2[0m
+[0;32mI (25) boot: efuse block revision: v1.3[0m
+[0;32mI (25) boot.esp32s3: Boot SPI Speed : 80MHz[0m
+[0;32mI (25) boot.esp32s3: SPI Mode       : DIO[0m
+[0;32mI (26) boot.esp32s3: SPI Flash Size : 16MB[0m
+[0;32mI (26) boot: Enabling RNG early entropy source...[0m
+[0;32mI (26) boot: Partition Table:[0m
+[0;32mI (26) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (26) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (27) boot:  1 otadata          OTA data         01 00 0000f000 00002000[0m
+[0;32mI (27) boot:  2 phy_init         RF data          01 01 00011000 00001000[0m
+[0;32mI (28) boot:  3 ota_0            OTA app          00 10 00020000 00700000[0m
+[0;32mI (28) boot:  4 ota_1            OTA app          00 11 00720000 00700000[0m
+[0;32mI (28) boot: End of partition table[0m
+[0;32mI (29) esp_image: segment 0: paddr=00020020 vaddr=3c090020 size=21290h (135824) map[0m
+[0;32mI (53) esp_image: segment 1: paddr=000412b8 vaddr=3fc9bf00 size=05368h ( 21352) load[0m
+[0;32mI (58) esp_image: segment 2: paddr=00046628 vaddr=40374000 size=099f0h ( 39408) load[0m
+[0;32mI (67) esp_image: segment 3: paddr=00050020 vaddr=42000020 size=8ff7ch (589692) map[0m
+[0;32mI (171) esp_image: segment 4: paddr=000dffa4 vaddr=4037d9f0 size=0e444h ( 58436) load[0m
+[0;32mI (184) esp_image: segment 5: paddr=000ee3f0 vaddr=50000000 size=00020h (    32) load[0m
+[0;32mI (194) boot: Loaded app from partition at offset 0x20000[0m
+[0;32mI (194) boot: Disabling RNG early entropy source...[0m
+[0;32mI (195) octal_psram: vendor id    : 0x0d (AP)[0m
+[0;32mI (195) octal_psram: dev id       : 0x02 (generation 3)[0m
+[0;32mI (195) octal_psram: density      : 0x03 (64 Mbit)[0m
+[0;32mI (196) octal_psram: good-die     : 0x01 (Pass)[0m
+[0;32mI (196) octal_psram: Latency      : 0x01 (Fixed)[0m
+[0;32mI (196) octal_psram: VCC          : 0x01 (3V)[0m
+[0;32mI (196) octal_psram: SRF          : 0x01 (Fast Refresh)[0m
+[0;32mI (196) octal_psram: BurstType    : 0x01 (Hybrid Wrap)[0m
+[0;32mI (197) octal_psram: BurstLen     : 0x01 (32 Byte)[0m
+[0;32mI (197) octal_psram: Readlatency  : 0x02 (10 cycles@Fixed)[0m
+[0;32mI (197) octal_psram: DriveStrength: 0x00 (1/1)[0m
+[0;32mI (197) MSPI Timing: Enter psram timing tuning[0m
+[0;32mI (198) esp_psram: Found 8MB PSRAM device[0m
+[0;32mI (198) esp_psram: Speed: 80MHz[0m
+[0;32mI (199) cpu_start: Multicore app[0m
+[0;32mI (622) esp_psram: SPI SRAM memory test OK[0m
+[0;32mI (630) cpu_start: Pro cpu start user code[0m
+[0;32mI (630) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (630) app_init: Application information:[0m
+[0;32mI (631) app_init: Project name:     esp32_sd_wifi_wav_player[0m
+[0;32mI (631) app_init: App version:      0.1.0[0m
+[0;32mI (631) app_init: Compile time:     Apr 15 2026 01:57:06[0m
+[0;32mI (631) app_init: ELF file SHA256:  c31ba9d99...[0m
+[0;32mI (631) app_init: ESP-IDF:          v5.5.3[0m
+[0;32mI (631) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (632) efuse_init: Max chip rev:     v0.99 [0m
+[0;32mI (632) efuse_init: Chip rev:         v0.2[0m
+[0;32mI (632) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (632) heap_init: At 3FCA4FD8 len 00044738 (273 KiB): RAM[0m
+[0;32mI (632) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM[0m
+[0;32mI (633) heap_init: At 3FCF0000 len 00008000 (32 KiB): DRAM[0m
+[0;32mI (633) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM[0m
+[0;32mI (633) esp_psram: Adding pool of 8192K of PSRAM memory to heap allocator[0m
+[0;32mI (634) spi_flash: detected chip: boya[0m
+[0;32mI (634) spi_flash: flash io: dio[0m
+[0;32mI (635) sleep_gpio: Configure to isolate all GPIO pins in sleep state[0m
+[0;32mI (635) sleep_gpio: Enable automatic switching of GPIO sleep configuration[0m
+[0;32mI (636) main_task: Started on CPU0[0m
+[0;32mI (646) esp_psram: Reserving pool of 64K of internal memory for DMA/internal allocations[0m
+[0;32mI (646) main_task: Calling app_main()[0m
+[0;32mI (646) app_main: Firmware identity: project=esp32_sd_wifi_wav_player version=0.1.0 built=Apr 15 2026 01:57:06 idf=v5.5.3 elf_sha256=c31ba9d99[0m
+[0;32mI (666) audio_sdcard: Mounting SD card at /sdcard over SPI[0m
+[1;31mE (706) vfs_fat_sdmmc: sdmmc_card_init failed (0x109).[0m
+[1;31mE (706) audio_sdcard: Failed to mount SD card: ESP_ERR_INVALID_CRC[0m
+[0;33mW (706) app_main: Initial SD mount failed: ESP_ERR_INVALID_CRC[0m
+[0;32mI (706) audio_sdcard: Mounting SD card at /sdcard over SPI[0m
+[0;32mI (706) pp: pp rom version: e7ae62f[0m
+[0;32mI (706) net80211: net80211 rom version: e7ae62f[0m
+[0;32mI (716) wifi:wifi driver task: 3fcc8e04, prio:23, stack:6656, core=0[0m
+[0;32mI (716) wifi:wifi firmware version: 4df78f2[0m
+[0;32mI (716) wifi:wifi certification version: v7.0[0m
+[0;32mI (716) wifi:config NVS flash: enabled[0m
+[0;32mI (716) wifi:config nano formatting: disabled[0m
+[0;32mI (716) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (716) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (726) wifi:Init management short buffer num: 32[0m
+[0;32mI (726) wifi:Init static tx buffer num: 16[0m
+[0;32mI (726) wifi:Init tx cache buffer num: 32[0m
+[0;32mI (726) wifi:Init static tx FG buffer num: 2[0m
+[0;32mI (726) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (726) wifi:Init static rx buffer num: 16[0m
+[0;32mI (726) wifi:Init dynamic rx buffer num: 32[0m
+[1;31mE (726) vfs_fat_sdmmc: sdmmc_card_init failed (0x107).[0m
+[1;31mE (726) audio_sdcard: Failed to mount SD card: ESP_ERR_TIMEOUT[0m
+[0;32mI (726) wifi_init: rx ba win: 16[0m
+[0;33mW (726) loop_player: Playback iteration failed: ESP_ERR_TIMEOUT[0m
+[0;32mI (726) wifi_init: accept mbox: 6[0m
+[0;32mI (726) wifi_init: tcpip mbox: 32[0m
+[0;32mI (726) wifi_init: udp mbox: 6[0m
+[0;32mI (726) wifi_init: tcp mbox: 6[0m
+[0;32mI (726) wifi_init: tcp tx win: 5760[0m
+[0;32mI (726) wifi_init: tcp rx win: 5760[0m
+[0;32mI (726) wifi_init: tcp mss: 1440[0m
+[0;32mI (726) wifi_init: WiFi/LWIP prefer SPIRAM[0m
+[0;32mI (726) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (726) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (736) phy_init: phy_version 711,97bcf0a2,Aug 25 2025,19:04:10[0m
+[0;32mI (776) wifi:mode : softAP (1c:db:d4:47:06:a5)[0m
+[0;32mI (776) wifi:Total power save buffer number: 8[0m
+[0;32mI (786) wifi:Init max length of beacon: 752/752[0m
+[0;32mI (786) wifi:Init max length of beacon: 752/752[0m
+[0;32mI (786) wifi_manager: SoftAP started: ssid=ESP32-WAV-Player channel=6 auth=wpa2 url=http://192.168.4.1/[0m
+[0;32mI (786) esp_netif_lwip: DHCP server started on interface WIFI_AP_DEF with IP: 192.168.4.1[0m
+[0;32mI (786) web_server: HTTP server started[0m
+[0;32mI (786) app_main: Ready. Connect to SSID 'ESP32-WAV-Player' and open http://192.168.4.1/[0m
+[0;32mI (786) main_task: Returned from app_main()[0m
+[0;32mI (2726) audio_sdcard: Mounting SD card at /sdcard over SPI[0m
+[1;31mE (2746) vfs_fat_sdmmc: sdmmc_card_init failed (0x107).[0m
+[1;31mE (2746) audio_sdcard: Failed to mount SD card: ESP_ERR_TIMEOUT[0m
+[0;33mW (2746) loop_player: Playback iteration failed: ESP_ERR_TIMEOUT[0m
+[0;32mI (4746) audio_sdcard: Mounting SD card at /sdcard over SPI[0m
+[1;31mE (4766) vfs_fat_sdmmc: sdmmc_card_init failed (0x107).[0m
+[1;31mE (4766) audio_sdcard: Failed to mount SD card: ESP_ERR_TIMEOUT[0m
+[0;33mW (4766) loop_player: Playback iteration failed: ESP_ERR_TIMEOUT[0m
+[0;32mI (6766) audio_sdcard: Mounting SD card at /sdcard over SPI[0m
+[1;31mE (6786) vfs_fat_sdmmc: sdmmc_card_init failed (0x107).[0m
+[1;31mE (6786) audio_sdcard: Failed to mount SD card: ESP_ERR_TIMEOUT[0m
+[0;33mW (6786) loop_player: Playback iteration failed: ESP_ERR_TIMEOUT[0m

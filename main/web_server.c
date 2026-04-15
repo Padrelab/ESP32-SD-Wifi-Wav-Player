@@ -1,5 +1,6 @@
 #include "web_server.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -8,15 +9,17 @@
 #include "audio_wav.h"
 #include "esp_app_desc.h"
 #include "esp_check.h"
+#include "esp_heap_caps.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "esp_memory_utils.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
 #include "freertos/task.h"
 #include "loop_player.h"
 #include "sdkconfig.h"
 
-#define UPLOAD_BUFFER_SIZE   2048
+#define UPLOAD_BUFFER_SIZE   (32 * 1024)
 
 typedef struct {
     httpd_handle_t server;
@@ -25,6 +28,45 @@ typedef struct {
 
 static const char *TAG = "web_server";
 static web_server_context_t s_web = {0};
+
+static void *web_server_alloc_prefer_external(size_t size, const char *label)
+{
+    void *ptr = NULL;
+
+#if CONFIG_SPIRAM
+    ptr = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (ptr == NULL) {
+        ESP_LOGW(TAG, "Failed to allocate %s (%u bytes) in PSRAM, falling back to internal RAM", label, (unsigned) size);
+    }
+#endif
+
+    if (ptr == NULL) {
+        ptr = heap_caps_malloc(size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
+
+    if (ptr != NULL) {
+        ESP_LOGI(
+            TAG,
+            "Allocated %s (%u bytes) in %s",
+            label,
+            (unsigned) size,
+            esp_ptr_external_ram(ptr) ? "PSRAM" : "internal RAM"
+        );
+    }
+
+    return ptr;
+}
+
+static void *web_server_alloc_internal(size_t size, const char *label)
+{
+    void *ptr = heap_caps_malloc(size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+
+    if (ptr != NULL) {
+        ESP_LOGI(TAG, "Allocated %s (%u bytes) in internal RAM", label, (unsigned) size);
+    }
+
+    return ptr;
+}
 
 static const char k_index_html[] =
     "<!DOCTYPE html>"
@@ -70,20 +112,23 @@ static const char k_index_html[] =
     "</section>"
     "</main>"
     "<script>"
-    "async function refreshStatus(){const r=await fetch('/api/status');document.getElementById('status').textContent=await r.text();}"
+    "let uploadInProgress=false;"
+    "async function refreshStatus(){if(uploadInProgress)return;const r=await fetch('/api/status');document.getElementById('status').textContent=await r.text();}"
     "async function uploadFile(kind){"
     "const input=document.getElementById(kind==='wav'?'wavFile':'otaFile');"
     "const msg=document.getElementById(kind==='wav'?'wavMsg':'otaMsg');"
     "if(!input.files.length){msg.textContent='Choose a file first.';return;}"
     "const file=input.files[0];"
+    "uploadInProgress=true;"
     "msg.textContent='Uploading '+file.name+' ...';"
     "try{"
     "const r=await fetch(kind==='wav'?'/api/upload/wav':'/api/upload/ota',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':file.name},body:file});"
     "msg.textContent=await r.text();"
     "}catch(e){msg.textContent='Upload failed: '+e;}"
+    "finally{uploadInProgress=false;}"
     "refreshStatus();"
     "}"
-    "refreshStatus();setInterval(refreshStatus,3000);"
+    "refreshStatus();setInterval(refreshStatus,10000);"
     "</script>"
     "</body>"
     "</html>";
@@ -130,16 +175,37 @@ static esp_err_t status_get_handler(httpd_req_t *req)
 static esp_err_t receive_body_to_file(httpd_req_t *req, const char *path)
 {
     FILE *file = NULL;
-    char buffer[UPLOAD_BUFFER_SIZE];
+    char *buffer = NULL;
+    char *file_buffer = NULL;
+    int total = req->content_len;
     int remaining = req->content_len;
+    int last_logged_mb = -1;
+
+    buffer = web_server_alloc_prefer_external(UPLOAD_BUFFER_SIZE, "WAV upload buffer");
+    if (buffer == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate upload buffer (%u bytes)", (unsigned) UPLOAD_BUFFER_SIZE);
+        return ESP_ERR_NO_MEM;
+    }
 
     file = fopen(path, "wb");
     if (file == NULL) {
+        ESP_LOGE(TAG, "Failed to open %s for upload: errno=%d (%s)", path, errno, strerror(errno));
+        free(buffer);
         return ESP_FAIL;
     }
 
+    // Keep FATFS stdio buffering in internal RAM; the larger payload buffer can stay in PSRAM.
+    file_buffer = web_server_alloc_internal(UPLOAD_BUFFER_SIZE, "upload file buffer");
+    if (file_buffer != NULL) {
+        if (setvbuf(file, file_buffer, _IOFBF, UPLOAD_BUFFER_SIZE) != 0) {
+            ESP_LOGW(TAG, "Failed to attach internal stdio buffer to %s", path);
+            free(file_buffer);
+            file_buffer = NULL;
+        }
+    }
+
     while (remaining > 0) {
-        int chunk_size = remaining < (int) sizeof(buffer) ? remaining : (int) sizeof(buffer);
+        int chunk_size = remaining < UPLOAD_BUFFER_SIZE ? remaining : UPLOAD_BUFFER_SIZE;
         int received = httpd_req_recv(req, buffer, chunk_size);
 
         if (received == HTTPD_SOCK_ERR_TIMEOUT) {
@@ -147,21 +213,42 @@ static esp_err_t receive_body_to_file(httpd_req_t *req, const char *path)
         }
 
         if (received <= 0) {
+            ESP_LOGE(TAG, "Upload receive failed for %s: code=%d remaining=%d", path, received, remaining);
             fclose(file);
             unlink(path);
+            free(file_buffer);
+            free(buffer);
             return ESP_FAIL;
         }
 
         if (fwrite(buffer, 1, (size_t) received, file) != (size_t) received) {
+            ESP_LOGE(TAG, "Failed to write upload chunk to %s: errno=%d (%s)", path, errno, strerror(errno));
             fclose(file);
             unlink(path);
+            free(file_buffer);
+            free(buffer);
             return ESP_FAIL;
         }
 
         remaining -= received;
+
+        int uploaded_mb = (total - remaining) / (1024 * 1024);
+        if (uploaded_mb != last_logged_mb) {
+            last_logged_mb = uploaded_mb;
+            ESP_LOGI(TAG, "Upload progress for %s: %d/%d MiB", path, uploaded_mb, total / (1024 * 1024));
+        }
     }
 
-    fclose(file);
+    if (fclose(file) != 0) {
+        ESP_LOGE(TAG, "Failed to finalize uploaded file %s: errno=%d (%s)", path, errno, strerror(errno));
+        unlink(path);
+        free(file_buffer);
+        free(buffer);
+        return ESP_FAIL;
+    }
+
+    free(file_buffer);
+    free(buffer);
     return ESP_OK;
 }
 
@@ -179,7 +266,8 @@ static esp_err_t wav_upload_post_handler(httpd_req_t *req)
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty request body");
     }
 
-    snprintf(temp_path, sizeof(temp_path), "%s.upload", CONFIG_PLAYER_WAV_PATH);
+    snprintf(temp_path, sizeof(temp_path), "%s/loop.tmp", CONFIG_STORAGE_MOUNT_POINT);
+    ESP_LOGI(TAG, "Receiving WAV upload to %s (%d bytes)", temp_path, req->content_len);
 
     err = loop_player_begin_update(pdMS_TO_TICKS(CONFIG_PLAYER_UPDATE_TIMEOUT_MS));
     if (err != ESP_OK) {
@@ -243,7 +331,7 @@ static esp_err_t wav_upload_post_handler(httpd_req_t *req)
 
 static esp_err_t ota_upload_post_handler(httpd_req_t *req)
 {
-    char buffer[UPLOAD_BUFFER_SIZE];
+    char *buffer = NULL;
     int remaining = req->content_len;
     esp_ota_handle_t ota_handle = 0;
     const esp_partition_t *update_partition = NULL;
@@ -253,25 +341,33 @@ static esp_err_t ota_upload_post_handler(httpd_req_t *req)
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Empty request body");
     }
 
+    buffer = web_server_alloc_prefer_external(UPLOAD_BUFFER_SIZE, "OTA upload buffer");
+    if (buffer == NULL) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to allocate OTA buffer");
+    }
+
     err = loop_player_begin_update(pdMS_TO_TICKS(CONFIG_PLAYER_UPDATE_TIMEOUT_MS));
     if (err != ESP_OK) {
+        free(buffer);
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Player did not stop in time");
     }
 
     update_partition = esp_ota_get_next_update_partition(NULL);
     if (update_partition == NULL) {
         loop_player_end_update(false);
+        free(buffer);
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "No OTA partition available");
     }
 
     err = esp_ota_begin(update_partition, OTA_SIZE_UNKNOWN, &ota_handle);
     if (err != ESP_OK) {
         loop_player_end_update(false);
+        free(buffer);
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_begin failed");
     }
 
     while (remaining > 0) {
-        int chunk_size = remaining < (int) sizeof(buffer) ? remaining : (int) sizeof(buffer);
+        int chunk_size = remaining < UPLOAD_BUFFER_SIZE ? remaining : UPLOAD_BUFFER_SIZE;
         int received = httpd_req_recv(req, buffer, chunk_size);
 
         if (received == HTTPD_SOCK_ERR_TIMEOUT) {
@@ -281,6 +377,7 @@ static esp_err_t ota_upload_post_handler(httpd_req_t *req)
         if (received <= 0) {
             esp_ota_abort(ota_handle);
             loop_player_end_update(false);
+            free(buffer);
             return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OTA upload interrupted");
         }
 
@@ -288,6 +385,7 @@ static esp_err_t ota_upload_post_handler(httpd_req_t *req)
         if (err != ESP_OK) {
             esp_ota_abort(ota_handle);
             loop_player_end_update(false);
+            free(buffer);
             return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_write failed");
         }
 
@@ -297,15 +395,18 @@ static esp_err_t ota_upload_post_handler(httpd_req_t *req)
     err = esp_ota_end(ota_handle);
     if (err != ESP_OK) {
         loop_player_end_update(false);
+        free(buffer);
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "esp_ota_end failed");
     }
 
     err = esp_ota_set_boot_partition(update_partition);
     if (err != ESP_OK) {
         loop_player_end_update(false);
+        free(buffer);
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to select new boot partition");
     }
 
+    free(buffer);
     httpd_resp_set_type(req, "text/plain; charset=utf-8");
     httpd_resp_sendstr(req, "OTA image stored. The board will reboot in a moment.");
     xTaskCreate(web_server_reboot_task, "ota_reboot", 2048, NULL, 4, NULL);
@@ -342,6 +443,9 @@ esp_err_t web_server_start(audio_sdcard_t *sdcard)
     s_web.sdcard = sdcard;
     config.max_uri_handlers = 8;
     config.stack_size = 6144;
+    config.core_id = 0;
+    config.recv_wait_timeout = 30;
+    config.send_wait_timeout = 30;
 
     ESP_RETURN_ON_ERROR(httpd_start(&s_web.server, &config), TAG, "Failed to start HTTP server");
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_web.server, &index_uri), TAG, "Failed to register /");

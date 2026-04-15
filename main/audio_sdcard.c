@@ -10,6 +10,7 @@
 #include "sd_protocol_defs.h"
 
 static const char *TAG = "audio_sdcard";
+static const int AUDIO_SD_MAX_TRANSFER_SIZE = 32 * 1024;
 
 static const char *audio_sdcard_card_type_name(const sdmmc_card_t *card)
 {
@@ -95,7 +96,7 @@ static esp_err_t audio_sdcard_init_bus(audio_sdcard_t *sdcard)
         .sclk_io_num = CONFIG_SD_SPI_PIN_SCLK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
-        .max_transfer_sz = CONFIG_PLAYER_READ_BUFFER_SIZE + 1024,
+        .max_transfer_sz = AUDIO_SD_MAX_TRANSFER_SIZE,
     };
     esp_err_t err = spi_bus_initialize(sdcard->host_slot, &bus_cfg, SPI_DMA_CH_AUTO);
 

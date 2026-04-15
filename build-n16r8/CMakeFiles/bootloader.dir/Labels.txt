@@ -1,0 +1,13 @@
+# Target labels
+ bootloader
+# Source files and their labels
+/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/CMakeFiles/bootloader
+/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/CMakeFiles/bootloader.rule
+/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/CMakeFiles/bootloader-complete.rule
+/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule

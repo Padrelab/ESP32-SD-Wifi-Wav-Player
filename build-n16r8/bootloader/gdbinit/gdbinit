@@ -1,0 +1,2 @@
+source /Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader/gdbinit/symbols
+source /Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader/gdbinit/connect

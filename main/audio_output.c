@@ -23,8 +23,9 @@ esp_err_t audio_output_init(audio_output_t *output)
 
     memset(output, 0, sizeof(*output));
 
-    chan_cfg.dma_desc_num = 8;
-    chan_cfg.dma_frame_num = 256;
+    // Keep more audio queued to ride through SD SPI latency spikes on 24-bit material.
+    chan_cfg.dma_desc_num = 12;
+    chan_cfg.dma_frame_num = 512;
 
     ESP_RETURN_ON_ERROR(i2s_new_channel(&chan_cfg, &output->tx_handle, NULL), TAG, "Failed to create I2S TX channel");
 

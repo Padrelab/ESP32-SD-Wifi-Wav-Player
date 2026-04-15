@@ -143,6 +143,39 @@ static float decode_wav_sample_to_f32(const audio_wav_info_t *info, const uint8_
     return pcm_to_f32(sample, info->valid_bits_per_sample);
 }
 
+static int32_t decode_wav_sample_to_pcm_i32(const audio_wav_info_t *info, const uint8_t *data)
+{
+    int32_t sample = 0;
+
+    if (info->bits_per_sample == 16) {
+        sample = (int16_t) read_le16(data);
+    } else if (info->bits_per_sample == 24) {
+        sample = read_pcm24_le(data);
+    } else {
+        sample = read_pcm32_le(data);
+    }
+
+    sample = normalize_pcm_sample(sample, info->bits_per_sample, info->valid_bits_per_sample);
+    return sample;
+}
+
+static int32_t scale_and_left_align_pcm_sample(int32_t sample, uint16_t valid_bits, uint32_t volume_percent)
+{
+    int shift = 32 - (int) valid_bits;
+    int64_t aligned = (int64_t) sample << shift;
+    int64_t scaled = (aligned * (int64_t) volume_percent) / 100;
+
+    if (scaled > INT32_MAX) {
+        return INT32_MAX;
+    }
+
+    if (scaled < INT32_MIN) {
+        return INT32_MIN;
+    }
+
+    return (int32_t) scaled;
+}
+
 size_t audio_wav_convert_chunk_to_stereo_f32(
     const audio_wav_info_t *info,
     const uint8_t *input,
@@ -167,6 +200,33 @@ size_t audio_wav_convert_chunk_to_stereo_f32(
     }
 
     return frame_count;
+}
+
+size_t audio_wav_convert_pcm_chunk_to_stereo_i32(
+    const audio_wav_info_t *info,
+    const uint8_t *input,
+    size_t input_bytes,
+    uint32_t volume_percent,
+    int32_t *output
+)
+{
+    size_t bytes_per_sample = info->bits_per_sample / 8;
+    size_t frame_count = input_bytes / info->block_align;
+
+    for (size_t frame = 0; frame < frame_count; ++frame) {
+        const uint8_t *cursor = &input[frame * info->block_align];
+        int32_t left = decode_wav_sample_to_pcm_i32(info, cursor);
+        int32_t right = left;
+
+        if (info->channels == 2) {
+            right = decode_wav_sample_to_pcm_i32(info, cursor + bytes_per_sample);
+        }
+
+        output[2 * frame] = scale_and_left_align_pcm_sample(left, info->valid_bits_per_sample, volume_percent);
+        output[2 * frame + 1] = scale_and_left_align_pcm_sample(right, info->valid_bits_per_sample, volume_percent);
+    }
+
+    return frame_count * 2 * sizeof(output[0]);
 }
 
 static esp_err_t audio_wav_read_exact(audio_storage_stream_t *stream, void *buffer, size_t bytes_to_read)
@@ -295,6 +355,21 @@ esp_err_t audio_wav_parse_header_stream(audio_storage_stream_t *stream, audio_wa
         } else {
             ESP_RETURN_ON_ERROR(skip_bytes(stream, padded_chunk_size), TAG, "Failed to skip WAV chunk");
         }
+    }
+
+    if (info->data_size_bytes == 0) {
+        ESP_LOGE(TAG, "WAV data chunk is empty");
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    if ((info->data_size_bytes % info->block_align) != 0) {
+        ESP_LOGE(
+            TAG,
+            "WAV data size is not aligned to sample frames: data=%lu block_align=%u",
+            (unsigned long) info->data_size_bytes,
+            info->block_align
+        );
+        return ESP_ERR_INVALID_SIZE;
     }
 
     return ESP_OK;

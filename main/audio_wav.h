@@ -9,6 +9,7 @@
 
 #define AUDIO_WAV_MIN_SAMPLE_RATE_HZ   8000U
 #define AUDIO_WAV_MAX_SAMPLE_RATE_HZ   192000U
+#define AUDIO_WAV_MAX_BLOCK_ALIGN      8U
 
 typedef enum {
     AUDIO_WAV_ENCODING_PCM = 0,
@@ -34,4 +35,11 @@ size_t audio_wav_convert_chunk_to_stereo_f32(
     const uint8_t *input,
     size_t input_bytes,
     float *output
+);
+size_t audio_wav_convert_pcm_chunk_to_stereo_i32(
+    const audio_wav_info_t *info,
+    const uint8_t *input,
+    size_t input_bytes,
+    uint32_t volume_percent,
+    int32_t *output
 );
