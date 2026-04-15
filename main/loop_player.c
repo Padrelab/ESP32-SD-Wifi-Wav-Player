@@ -13,6 +13,7 @@
 #include "esp_timer.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
+#include "nvs.h"
 #include "sdkconfig.h"
 
 #define PLAYER_EVENT_IDLE     BIT0
@@ -21,6 +22,8 @@
 #define PLAYER_FILE_BUFFER_SIZE_BYTES   (32 * 1024)
 #define PLAYER_LATENCY_WARN_US          (75 * 1000)
 #define PLAYER_MAX_LATENCY_WARNINGS     8
+#define PLAYER_NVS_NAMESPACE            "player"
+#define PLAYER_NVS_VOLUME_KEY           "volume"
 
 typedef struct {
     audio_sdcard_t *sdcard;
@@ -33,6 +36,59 @@ typedef struct {
 
 static const char *TAG = "loop_player";
 static loop_player_context_t s_player = {0};
+
+static uint32_t loop_player_load_volume_percent(void)
+{
+    nvs_handle_t nvs = 0;
+    uint8_t stored_volume = 0;
+    esp_err_t err = nvs_open(PLAYER_NVS_NAMESPACE, NVS_READONLY, &nvs);
+
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return CONFIG_PLAYER_VOLUME_PERCENT;
+    }
+
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to open NVS for volume load: %s", esp_err_to_name(err));
+        return CONFIG_PLAYER_VOLUME_PERCENT;
+    }
+
+    err = nvs_get_u8(nvs, PLAYER_NVS_VOLUME_KEY, &stored_volume);
+    nvs_close(nvs);
+
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return CONFIG_PLAYER_VOLUME_PERCENT;
+    }
+
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to load volume from NVS: %s", esp_err_to_name(err));
+        return CONFIG_PLAYER_VOLUME_PERCENT;
+    }
+
+    if (stored_volume > LOOP_PLAYER_VOLUME_MAX_PERCENT) {
+        ESP_LOGW(TAG, "Ignoring invalid stored volume: %u%%", stored_volume);
+        return CONFIG_PLAYER_VOLUME_PERCENT;
+    }
+
+    return stored_volume;
+}
+
+static esp_err_t loop_player_save_volume_percent(uint32_t volume_percent)
+{
+    nvs_handle_t nvs = 0;
+    esp_err_t err = nvs_open(PLAYER_NVS_NAMESPACE, NVS_READWRITE, &nvs);
+
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = nvs_set_u8(nvs, PLAYER_NVS_VOLUME_KEY, (uint8_t) volume_percent);
+    if (err == ESP_OK) {
+        err = nvs_commit(nvs);
+    }
+
+    nvs_close(nvs);
+    return err;
+}
 
 static void *loop_player_alloc_internal(size_t size, const char *label)
 {
@@ -129,9 +185,50 @@ void loop_player_get_status(loop_player_status_t *status)
     xSemaphoreGive(s_player.mutex);
 }
 
-static float loop_player_volume_scale(void)
+uint32_t loop_player_get_volume_percent(void)
 {
-    return (float) CONFIG_PLAYER_VOLUME_PERCENT / 100.0f;
+    uint32_t volume_percent = CONFIG_PLAYER_VOLUME_PERCENT;
+
+    if (s_player.mutex == NULL) {
+        return volume_percent;
+    }
+
+    xSemaphoreTake(s_player.mutex, portMAX_DELAY);
+    volume_percent = s_player.status.volume_percent;
+    xSemaphoreGive(s_player.mutex);
+
+    return volume_percent;
+}
+
+esp_err_t loop_player_set_volume_percent(uint32_t volume_percent)
+{
+    esp_err_t err = ESP_OK;
+
+    ESP_RETURN_ON_FALSE(
+        volume_percent <= LOOP_PLAYER_VOLUME_MAX_PERCENT,
+        ESP_ERR_INVALID_ARG,
+        TAG,
+        "Invalid volume: %lu%%",
+        (unsigned long) volume_percent
+    );
+    ESP_RETURN_ON_FALSE(s_player.mutex != NULL, ESP_ERR_INVALID_STATE, TAG, "Player is not started");
+
+    xSemaphoreTake(s_player.mutex, portMAX_DELAY);
+    s_player.status.volume_percent = volume_percent;
+    xSemaphoreGive(s_player.mutex);
+
+    err = loop_player_save_volume_percent(volume_percent);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to persist volume %lu%%: %s", (unsigned long) volume_percent, esp_err_to_name(err));
+    }
+
+    ESP_LOGI(TAG, "Volume set to %lu%%", (unsigned long) volume_percent);
+    return ESP_OK;
+}
+
+static float loop_player_volume_scale(uint32_t volume_percent)
+{
+    return (float) volume_percent / 100.0f;
 }
 
 static esp_err_t loop_player_play_once(
@@ -244,18 +341,19 @@ static esp_err_t loop_player_play_once(
         if (aligned_bytes > 0) {
             int64_t write_start_us = 0;
             int64_t write_time_us = 0;
+            uint32_t volume_percent = loop_player_get_volume_percent();
 
             if (wav_info.encoding == AUDIO_WAV_ENCODING_PCM) {
                 i2s_bytes = audio_wav_convert_pcm_chunk_to_stereo_i32(
                     &wav_info,
                     read_buffer,
                     aligned_bytes,
-                    CONFIG_PLAYER_VOLUME_PERCENT,
+                    volume_percent,
                     i2s_buffer
                 );
             } else {
                 size_t frames = audio_wav_convert_chunk_to_stereo_f32(&wav_info, read_buffer, aligned_bytes, sample_buffer);
-                audio_output_apply_volume(sample_buffer, frames, loop_player_volume_scale());
+                audio_output_apply_volume(sample_buffer, frames, loop_player_volume_scale(volume_percent));
                 i2s_bytes = audio_output_convert_stereo_f32_to_i32(sample_buffer, frames, i2s_buffer);
             }
 
@@ -399,6 +497,8 @@ esp_err_t loop_player_start(audio_sdcard_t *sdcard)
     ESP_RETURN_ON_FALSE(s_player.events != NULL, ESP_ERR_NO_MEM, TAG, "Failed to allocate event group");
     ESP_RETURN_ON_FALSE(s_player.mutex != NULL, ESP_ERR_NO_MEM, TAG, "Failed to allocate status mutex");
 
+    s_player.status.volume_percent = loop_player_load_volume_percent();
+    ESP_LOGI(TAG, "Initial volume: %lu%%", (unsigned long) s_player.status.volume_percent);
     loop_player_set_status(&s_player, LOOP_PLAYER_STATE_STARTING, 0, 0, NULL);
 
     err = audio_output_init(&s_player.output);

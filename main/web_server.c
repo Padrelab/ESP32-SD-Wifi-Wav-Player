@@ -2,6 +2,7 @@
 
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -82,6 +83,7 @@ static const char k_index_html[] =
     "h1{margin:0 0 8px;font-size:32px;}h2{margin:0 0 12px;font-size:20px;}"
     "p{line-height:1.5;margin:8px 0 0;}pre{background:#1f2937;color:#f9fafb;padding:16px;border-radius:12px;overflow:auto;}"
     "input,button{font:inherit;}input[type=file]{display:block;margin:12px 0;}"
+    ".volume-row{display:flex;align-items:center;gap:14px;margin-top:12px;}input[type=range]{flex:1;accent-color:#c2551a;}"
     "button{background:#c2551a;color:#fff;border:0;border-radius:999px;padding:10px 16px;cursor:pointer;}"
     "button:hover{background:#9d4516;}.msg{margin-top:12px;white-space:pre-wrap;}"
     "code{background:#f1e4d4;padding:2px 6px;border-radius:6px;}"
@@ -99,6 +101,15 @@ static const char k_index_html[] =
     "<button onclick='refreshStatus()'>Refresh</button>"
     "</section>"
     "<section class='card'>"
+    "<h2>Volume</h2>"
+    "<p>Adjust playback volume without restarting the loop.</p>"
+    "<label class='volume-row'>"
+    "<input id='volumeRange' type='range' min='0' max='100' step='1' value='90' oninput='queueVolume(this.value)'>"
+    "<strong id='volumeValue'>90%</strong>"
+    "</label>"
+    "<div id='volumeMsg' class='msg'></div>"
+    "</section>"
+    "<section class='card'>"
     "<h2>Replace WAV</h2>"
     "<input id='wavFile' type='file' accept='.wav,audio/wav'>"
     "<button onclick='uploadFile(\"wav\")'>Upload WAV</button>"
@@ -113,7 +124,19 @@ static const char k_index_html[] =
     "</main>"
     "<script>"
     "let uploadInProgress=false;"
-    "async function refreshStatus(){if(uploadInProgress)return;const r=await fetch('/api/status');document.getElementById('status').textContent=await r.text();}"
+    "let volumeTimer=null;"
+    "let volumeInFlight=false;"
+    "function parseStatus(text){const out={};text.split('\\n').forEach(line=>{const i=line.indexOf(':');if(i>0)out[line.slice(0,i).trim()]=line.slice(i+1).trim();});return out;}"
+    "function syncVolume(text){if(volumeInFlight)return;const fields=parseStatus(text);const value=parseInt(fields.volume_percent,10);if(Number.isNaN(value))return;document.getElementById('volumeRange').value=value;document.getElementById('volumeValue').textContent=value+'%';}"
+    "async function refreshStatus(){if(uploadInProgress)return;const r=await fetch('/api/status');const text=await r.text();document.getElementById('status').textContent=text;syncVolume(text);}"
+    "function queueVolume(value){document.getElementById('volumeValue').textContent=value+'%';clearTimeout(volumeTimer);volumeTimer=setTimeout(()=>setVolume(value),250);}"
+    "async function setVolume(value){"
+    "const msg=document.getElementById('volumeMsg');"
+    "volumeInFlight=true;"
+    "try{const r=await fetch('/api/volume',{method:'POST',headers:{'Content-Type':'text/plain'},body:String(value)});msg.textContent=await r.text();}"
+    "catch(e){msg.textContent='Volume update failed: '+e;}"
+    "finally{volumeInFlight=false;refreshStatus();}"
+    "}"
     "async function uploadFile(kind){"
     "const input=document.getElementById(kind==='wav'?'wavFile':'otaFile');"
     "const msg=document.getElementById(kind==='wav'?'wavMsg':'otaMsg');"
@@ -156,7 +179,7 @@ static esp_err_t status_get_handler(httpd_req_t *req)
     snprintf(
         body,
         sizeof(body),
-        "project: %s\nversion: %s\nstate: %s\nsd_ready: %s\nwav_path: %s\nsample_rate_hz: %lu\nchannels: %u\nloop_count: %lu\nlast_error: %s\n",
+        "project: %s\nversion: %s\nstate: %s\nsd_ready: %s\nwav_path: %s\nsample_rate_hz: %lu\nchannels: %u\nloop_count: %lu\nvolume_percent: %lu\nlast_error: %s\n",
         app_desc->project_name,
         app_desc->version,
         loop_player_state_name(status.state),
@@ -165,9 +188,69 @@ static esp_err_t status_get_handler(httpd_req_t *req)
         (unsigned long) status.sample_rate_hz,
         status.channels,
         (unsigned long) status.loop_count,
+        (unsigned long) status.volume_percent,
         status.last_error[0] != '\0' ? status.last_error : "-"
     );
 
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    return httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
+}
+
+static esp_err_t volume_get_handler(httpd_req_t *req)
+{
+    char body[32];
+    uint32_t volume_percent = loop_player_get_volume_percent();
+
+    snprintf(body, sizeof(body), "%lu\n", (unsigned long) volume_percent);
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    return httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
+}
+
+static esp_err_t volume_post_handler(httpd_req_t *req)
+{
+    char body[16];
+    int remaining = req->content_len;
+    int received_total = 0;
+    char *end = NULL;
+    long volume_percent = 0;
+    esp_err_t err = ESP_OK;
+
+    if (req->content_len <= 0 || req->content_len >= (int) sizeof(body)) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Volume must be a number from 0 to 100");
+    }
+
+    while (remaining > 0) {
+        int received = httpd_req_recv(req, body + received_total, remaining);
+
+        if (received == HTTPD_SOCK_ERR_TIMEOUT) {
+            continue;
+        }
+
+        if (received <= 0) {
+            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to receive volume");
+        }
+
+        received_total += received;
+        remaining -= received;
+    }
+
+    body[received_total] = '\0';
+    volume_percent = strtol(body, &end, 10);
+
+    while (end != NULL && (*end == ' ' || *end == '\r' || *end == '\n' || *end == '\t')) {
+        ++end;
+    }
+
+    if (end == body || end == NULL || *end != '\0' || volume_percent < 0 || volume_percent > (long) LOOP_PLAYER_VOLUME_MAX_PERCENT) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Volume must be a number from 0 to 100");
+    }
+
+    err = loop_player_set_volume_percent((uint32_t) volume_percent);
+    if (err != ESP_OK) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to set volume");
+    }
+
+    snprintf(body, sizeof(body), "Volume: %ld%%", volume_percent);
     httpd_resp_set_type(req, "text/plain; charset=utf-8");
     return httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
 }
@@ -426,6 +509,16 @@ esp_err_t web_server_start(audio_sdcard_t *sdcard)
         .method = HTTP_GET,
         .handler = status_get_handler,
     };
+    httpd_uri_t volume_get_uri = {
+        .uri = "/api/volume",
+        .method = HTTP_GET,
+        .handler = volume_get_handler,
+    };
+    httpd_uri_t volume_post_uri = {
+        .uri = "/api/volume",
+        .method = HTTP_POST,
+        .handler = volume_post_handler,
+    };
     httpd_uri_t wav_upload_uri = {
         .uri = "/api/upload/wav",
         .method = HTTP_POST,
@@ -450,6 +543,8 @@ esp_err_t web_server_start(audio_sdcard_t *sdcard)
     ESP_RETURN_ON_ERROR(httpd_start(&s_web.server, &config), TAG, "Failed to start HTTP server");
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_web.server, &index_uri), TAG, "Failed to register /");
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_web.server, &status_uri), TAG, "Failed to register /api/status");
+    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_web.server, &volume_get_uri), TAG, "Failed to register GET /api/volume");
+    ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_web.server, &volume_post_uri), TAG, "Failed to register POST /api/volume");
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_web.server, &wav_upload_uri), TAG, "Failed to register /api/upload/wav");
     ESP_RETURN_ON_ERROR(httpd_register_uri_handler(s_web.server, &ota_upload_uri), TAG, "Failed to register /api/upload/ota");
 
