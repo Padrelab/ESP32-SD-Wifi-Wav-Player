@@ -6,7 +6,7 @@
     "idf_path":           "/Users/padremac/esp/esp-idf",
     "build_dir":          "/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8",
     "config_file":        "/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/sdkconfig.n16r8",
-    "config_defaults":    "/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/sdkconfig.defaults;/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/sdkconfig.defaults.n16r8",
+    "config_defaults":    "/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/sdkconfig.defaults",
     "bootloader_elf":     "/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader/bootloader.elf",
     "app_elf":            "esp32_sd_wifi_wav_player.elf",
     "app_bin":            "esp32_sd_wifi_wav_player.bin",

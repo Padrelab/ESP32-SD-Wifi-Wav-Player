@@ -1,0 +1,81 @@
+Command: ninja flash
+[1/5] cd /Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/esp-idf/esptool_py && /Users/padremac/.espressif/python_env/idf5.5_py3.14_env/bin/python /Users/padremac/esp/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/partition_table/partition-table.bin /Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/esp32_sd_wifi_wav_player.bin
+esp32_sd_wifi_wav_player.bin binary size 0xd17a0 bytes. Smallest app partition is 0x700000 bytes. 0x62e860 bytes (88%) free.
+[2/5] Performing build step for 'bootloader'
+[1/1] cd /Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader/esp-idf/esptool_py && /Users/padremac/.espressif/python_env/idf5.5_py3.14_env/bin/python /Users/padremac/esp/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x0 /Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8/bootloader/bootloader.bin
+Bootloader binary size 0x5160 bytes. 0x2ea0 bytes (36%) free.
+[3/5] No install step for 'bootloader'
+[4/5] Completed 'bootloader'
+[4/5] cd /Users/padremac/esp/esp-idf/components/esptool_py && /opt/homebrew/bin/cmake -D IDF_PATH=/Users/padremac/esp/esp-idf -D "SERIAL_TOOL=/Users/padremac/.espressif/python_env/idf5.5_py3.14_env/bin/python;;/Users/padremac/esp/esp-idf/components/esptool_py/esptool/esptool.py;--chip;esp32s3" -D "SERIAL_TOOL_ARGS=--before=default_reset;--after=hard_reset;write_flash;@flash_args" -D WORKING_DIRECTORY=/Users/padremac/Documents/GitHub/ESP32-SD-Wifi-Wav-Player/build-n16r8 -P /Users/padremac/esp/esp-idf/components/esptool_py/run_serial_tool.cmake
+esptool.py --chip esp32s3 -p /dev/cu.usbmodem2101 -b 460800 --before=default_reset --after=hard_reset write_flash --flash_mode dio --flash_freq 80m --flash_size 16MB 0x0 bootloader/bootloader.bin 0x20000 esp32_sd_wifi_wav_player.bin 0x8000 partition_table/partition-table.bin 0xf000 ota_data_initial.bin
+esptool.py v4.12.dev1
+Serial port /dev/cu.usbmodem2101
+Connecting...
+Chip is ESP32-S3 (QFN56) (revision v0.2)
+Features: WiFi, BLE, Embedded PSRAM 8MB (AP_3v3)
+Crystal is 40MHz
+USB mode: USB-Serial/JTAG
+MAC: 1c:db:d4:47:06:a4
+Uploading stub...
+Running stub...
+Stub running...
+Changing baud rate to 460800
+Changed.
+Configuring flash size...
+Flash will be erased from 0x00000000 to 0x00005fff...
+Flash will be erased from 0x00020000 to 0x000f1fff...
+Flash will be erased from 0x00008000 to 0x00008fff...
+Flash will be erased from 0x0000f000 to 0x00010fff...
+SHA digest in image updated
+Compressed 20832 bytes to 13356...
+Writing at 0x00000000... (100 %)
+Wrote 20832 bytes (13356 compressed) at 0x00000000 in 0.3 seconds (effective 481.7 kbit/s)...
+Hash of data verified.
+Compressed 858016 bytes to 555984...
+Writing at 0x00020000... (2 %)
+Writing at 0x0002d68d... (5 %)
+Writing at 0x000388c8... (8 %)
+Writing at 0x00041d1a... (11 %)
+Writing at 0x0004b237... (14 %)
+Writing at 0x00050e4a... (17 %)
+Writing at 0x00056a0f... (20 %)
+Writing at 0x0005c3be... (23 %)
+Writing at 0x00061b34... (26 %)
+Writing at 0x00067356... (29 %)
+Writing at 0x0006cf8d... (32 %)
+Writing at 0x000727a9... (35 %)
+Writing at 0x00077e63... (38 %)
+Writing at 0x0007d169... (41 %)
+Writing at 0x0008224e... (44 %)
+Writing at 0x00087392... (47 %)
+Writing at 0x0008cdc3... (50 %)
+Writing at 0x0009242e... (52 %)
+Writing at 0x0009782e... (55 %)
+Writing at 0x0009cd63... (58 %)
+Writing at 0x000a2c66... (61 %)
+Writing at 0x000a7f24... (64 %)
+Writing at 0x000ad1c8... (67 %)
+Writing at 0x000b2541... (70 %)
+Writing at 0x000b77e6... (73 %)
+Writing at 0x000bc82a... (76 %)
+Writing at 0x000c1988... (79 %)
+Writing at 0x000c6f02... (82 %)
+Writing at 0x000cc53f... (85 %)
+Writing at 0x000d29d9... (88 %)
+Writing at 0x000db000... (91 %)
+Writing at 0x000e08da... (94 %)
+Writing at 0x000e66e0... (97 %)
+Writing at 0x000ec341... (100 %)
+Wrote 858016 bytes (555984 compressed) at 0x00020000 in 5.7 seconds (effective 1199.0 kbit/s)...
+Hash of data verified.
+Compressed 3072 bytes to 128...
+Writing at 0x00008000... (100 %)
+Wrote 3072 bytes (128 compressed) at 0x00008000 in 0.1 seconds (effective 372.4 kbit/s)...
+Hash of data verified.
+Compressed 8192 bytes to 31...
+Writing at 0x0000f000... (100 %)
+Wrote 8192 bytes (31 compressed) at 0x0000f000 in 0.1 seconds (effective 569.7 kbit/s)...
+Hash of data verified.
+
+Leaving...
+Hard resetting via RTS pin...

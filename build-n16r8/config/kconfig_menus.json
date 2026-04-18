@@ -6925,6 +6925,110 @@
                 "children": [],
                 "depends_on": null,
                 "help": null,
+                "id": "PLAYER_SD_RECOVERY_RETRY_DELAY_MS",
+                "name": "PLAYER_SD_RECOVERY_RETRY_DELAY_MS",
+                "range": [
+                    100,
+                    60000
+                ],
+                "title": "Initial SD recovery retry delay (ms)",
+                "type": "int"
+            },
+            {
+                "children": [],
+                "depends_on": null,
+                "help": null,
+                "id": "PLAYER_SD_RECOVERY_MAX_RETRY_DELAY_MS",
+                "name": "PLAYER_SD_RECOVERY_MAX_RETRY_DELAY_MS",
+                "range": [
+                    1000,
+                    300000
+                ],
+                "title": "Max SD recovery retry delay (ms)",
+                "type": "int"
+            },
+            {
+                "children": [],
+                "depends_on": null,
+                "help": null,
+                "id": "PLAYER_SD_WAIT_FOR_MEDIA_POLL_MS",
+                "name": "PLAYER_SD_WAIT_FOR_MEDIA_POLL_MS",
+                "range": [
+                    1000,
+                    300000
+                ],
+                "title": "Wait-for-media poll interval (ms)",
+                "type": "int"
+            },
+            {
+                "children": [],
+                "depends_on": null,
+                "help": null,
+                "id": "PLAYER_SD_ACTIVE_RECOVERY_ATTEMPTS",
+                "name": "PLAYER_SD_ACTIVE_RECOVERY_ATTEMPTS",
+                "range": [
+                    0,
+                    32
+                ],
+                "title": "Immediate SD recovery attempts before wait-for-media",
+                "type": "int"
+            },
+            {
+                "children": [],
+                "depends_on": null,
+                "help": null,
+                "id": "PLAYER_SD_RETURN_SETTLE_DELAY_MS",
+                "name": "PLAYER_SD_RETURN_SETTLE_DELAY_MS",
+                "range": [
+                    0,
+                    10000
+                ],
+                "title": "Wait after SD remount before media probe (ms)",
+                "type": "int"
+            },
+            {
+                "children": [],
+                "depends_on": null,
+                "help": null,
+                "id": "PLAYER_SD_RETURN_STABLE_CHECKS",
+                "name": "PLAYER_SD_RETURN_STABLE_CHECKS",
+                "range": [
+                    1,
+                    8
+                ],
+                "title": "Successful media probes required after SD remount",
+                "type": "int"
+            },
+            {
+                "children": [],
+                "depends_on": null,
+                "help": null,
+                "id": "PLAYER_SD_RETURN_STABLE_CHECK_INTERVAL_MS",
+                "name": "PLAYER_SD_RETURN_STABLE_CHECK_INTERVAL_MS",
+                "range": [
+                    0,
+                    5000
+                ],
+                "title": "Interval between post-remount media probes (ms)",
+                "type": "int"
+            },
+            {
+                "children": [],
+                "depends_on": null,
+                "help": null,
+                "id": "PLAYER_SD_RECOVERY_MIN_FREQUENCY_KHZ",
+                "name": "PLAYER_SD_RECOVERY_MIN_FREQUENCY_KHZ",
+                "range": [
+                    1000,
+                    20000
+                ],
+                "title": "Minimum SD SPI frequency during recovery (kHz)",
+                "type": "int"
+            },
+            {
+                "children": [],
+                "depends_on": null,
+                "help": null,
                 "id": "SD_SPI_PIN_MOSI",
                 "name": "SD_SPI_PIN_MOSI",
                 "range": null,

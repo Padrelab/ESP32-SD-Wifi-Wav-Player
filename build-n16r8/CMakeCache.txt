@@ -367,9 +367,6 @@ PYTHON_DEPS_CHECKED:UNINITIALIZED=1
 //No help, variable specified on the command line.
 SDKCONFIG:UNINITIALIZED=sdkconfig.n16r8
 
-//No help, variable specified on the command line.
-SDKCONFIG_DEFAULTS:UNINITIALIZED=sdkconfig.defaults;sdkconfig.defaults.n16r8
-
 //Allow unsafe builds. These builds ARE NOT SECURE.
 UNSAFE_BUILD:BOOL=OFF
 
