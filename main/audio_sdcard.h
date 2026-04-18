@@ -14,10 +14,14 @@ typedef struct {
     SemaphoreHandle_t mutex;
     bool mounted;
     spi_host_device_t host_slot;
+    uint32_t current_freq_khz;
 } audio_sdcard_t;
 
 esp_err_t audio_sdcard_init(audio_sdcard_t *sdcard);
 void audio_sdcard_deinit(audio_sdcard_t *sdcard);
 esp_err_t audio_sdcard_ensure_mounted(audio_sdcard_t *sdcard);
+esp_err_t audio_sdcard_force_remount(audio_sdcard_t *sdcard);
 bool audio_sdcard_is_ready(audio_sdcard_t *sdcard);
+void audio_sdcard_set_frequency_khz(audio_sdcard_t *sdcard, uint32_t frequency_khz);
+uint32_t audio_sdcard_get_frequency_khz(audio_sdcard_t *sdcard);
 const char *audio_sdcard_mount_point(void);

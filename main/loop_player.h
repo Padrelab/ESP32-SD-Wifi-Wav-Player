@@ -15,6 +15,8 @@ typedef enum {
     LOOP_PLAYER_STATE_IDLE,
     LOOP_PLAYER_STATE_PLAYING,
     LOOP_PLAYER_STATE_PAUSED,
+    LOOP_PLAYER_STATE_RECOVERING,
+    LOOP_PLAYER_STATE_WAITING_FOR_MEDIA,
     LOOP_PLAYER_STATE_ERROR,
 } loop_player_state_t;
 
@@ -25,6 +27,9 @@ typedef struct {
     uint16_t channels;
     uint32_t loop_count;
     uint32_t volume_percent;
+    uint32_t sd_remount_count;
+    uint32_t sd_remount_failure_count;
+    uint32_t sd_recovery_backoff_ms;
     char last_error[LOOP_PLAYER_STATUS_TEXT_LENGTH];
 } loop_player_status_t;
 

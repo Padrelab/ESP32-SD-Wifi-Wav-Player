@@ -179,7 +179,7 @@ static esp_err_t status_get_handler(httpd_req_t *req)
     snprintf(
         body,
         sizeof(body),
-        "project: %s\nversion: %s\nstate: %s\nsd_ready: %s\nwav_path: %s\nsample_rate_hz: %lu\nchannels: %u\nloop_count: %lu\nvolume_percent: %lu\nlast_error: %s\n",
+        "project: %s\nversion: %s\nstate: %s\nsd_ready: %s\nwav_path: %s\nsample_rate_hz: %lu\nchannels: %u\nloop_count: %lu\nvolume_percent: %lu\nsd_remount_count: %lu\nsd_remount_failure_count: %lu\nsd_recovery_backoff_ms: %lu\nlast_error: %s\n",
         app_desc->project_name,
         app_desc->version,
         loop_player_state_name(status.state),
@@ -189,6 +189,9 @@ static esp_err_t status_get_handler(httpd_req_t *req)
         status.channels,
         (unsigned long) status.loop_count,
         (unsigned long) status.volume_percent,
+        (unsigned long) status.sd_remount_count,
+        (unsigned long) status.sd_remount_failure_count,
+        (unsigned long) status.sd_recovery_backoff_ms,
         status.last_error[0] != '\0' ? status.last_error : "-"
     );
 

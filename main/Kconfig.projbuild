@@ -38,25 +38,65 @@ menu "ESP32 WAV Player"
         range 1000 60000
         default 15000
 
+    config PLAYER_SD_RECOVERY_RETRY_DELAY_MS
+        int "Initial SD recovery retry delay (ms)"
+        range 100 60000
+        default 2000
+
+    config PLAYER_SD_RECOVERY_MAX_RETRY_DELAY_MS
+        int "Max SD recovery retry delay (ms)"
+        range 1000 300000
+        default 15000
+
+    config PLAYER_SD_WAIT_FOR_MEDIA_POLL_MS
+        int "Wait-for-media poll interval (ms)"
+        range 1000 300000
+        default 15000
+
+    config PLAYER_SD_ACTIVE_RECOVERY_ATTEMPTS
+        int "Immediate SD recovery attempts before wait-for-media"
+        range 0 32
+        default 3
+
+    config PLAYER_SD_RETURN_SETTLE_DELAY_MS
+        int "Wait after SD remount before media probe (ms)"
+        range 0 10000
+        default 500
+
+    config PLAYER_SD_RETURN_STABLE_CHECKS
+        int "Successful media probes required after SD remount"
+        range 1 8
+        default 3
+
+    config PLAYER_SD_RETURN_STABLE_CHECK_INTERVAL_MS
+        int "Interval between post-remount media probes (ms)"
+        range 0 5000
+        default 150
+
+    config PLAYER_SD_RECOVERY_MIN_FREQUENCY_KHZ
+        int "Minimum SD SPI frequency during recovery (kHz)"
+        range 1000 20000
+        default 4000
+
     config SD_SPI_PIN_MOSI
         int "SD SPI MOSI GPIO"
-        default 15 if IDF_TARGET_ESP32S3
-        default 15
+        default 11 if IDF_TARGET_ESP32S3
+        default 11
 
     config SD_SPI_PIN_MISO
         int "SD SPI MISO GPIO"
-        default 16 if IDF_TARGET_ESP32S3
-        default 16
+        default 13 if IDF_TARGET_ESP32S3
+        default 13
 
     config SD_SPI_PIN_SCLK
         int "SD SPI SCLK GPIO"
-        default 17 if IDF_TARGET_ESP32S3
-        default 17
+        default 12 if IDF_TARGET_ESP32S3
+        default 12
 
     config SD_SPI_PIN_CS
         int "SD SPI CS GPIO"
-        default 18 if IDF_TARGET_ESP32S3
-        default 18
+        default 10 if IDF_TARGET_ESP32S3
+        default 10
 
     config SD_SPI_FREQUENCY_KHZ
         int "SD SPI clock (kHz)"

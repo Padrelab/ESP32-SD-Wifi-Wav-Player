@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
 
 #include "audio_output.h"
 #include "audio_wav.h"
@@ -22,8 +24,15 @@
 #define PLAYER_FILE_BUFFER_SIZE_BYTES   (32 * 1024)
 #define PLAYER_LATENCY_WARN_US          (75 * 1000)
 #define PLAYER_MAX_LATENCY_WARNINGS     8
+#define PLAYER_SD_REMOUNT_DELAY_MS      500
 #define PLAYER_NVS_NAMESPACE            "player"
 #define PLAYER_NVS_VOLUME_KEY           "volume"
+
+typedef enum {
+    LOOP_PLAYER_RECOVERY_NONE = 0,
+    LOOP_PLAYER_RECOVERY_ACTIVE,
+    LOOP_PLAYER_RECOVERY_WAITING_FOR_MEDIA,
+} loop_player_recovery_mode_t;
 
 typedef struct {
     audio_sdcard_t *sdcard;
@@ -138,6 +147,25 @@ static void loop_player_set_status(
     xSemaphoreGive(ctx->mutex);
 }
 
+static void loop_player_set_sd_recovery_metrics(
+    loop_player_context_t *ctx,
+    uint32_t remount_count,
+    uint32_t remount_failure_count,
+    uint32_t recovery_backoff_ms
+)
+{
+    if (ctx == NULL || ctx->mutex == NULL) {
+        return;
+    }
+
+    xSemaphoreTake(ctx->mutex, portMAX_DELAY);
+    ctx->status.sd_remount_count = remount_count;
+    ctx->status.sd_remount_failure_count = remount_failure_count;
+    ctx->status.sd_recovery_backoff_ms = recovery_backoff_ms;
+    ctx->status.sd_ready = audio_sdcard_is_ready(ctx->sdcard);
+    xSemaphoreGive(ctx->mutex);
+}
+
 static void loop_player_set_errorf(loop_player_context_t *ctx, const char *fmt, ...)
 {
     va_list args;
@@ -148,6 +176,175 @@ static void loop_player_set_errorf(loop_player_context_t *ctx, const char *fmt, 
     va_end(args);
 
     loop_player_set_status(ctx, LOOP_PLAYER_STATE_ERROR, 0, 0, text);
+}
+
+static uint32_t loop_player_next_recovery_backoff_ms(uint32_t current_delay_ms)
+{
+    if (current_delay_ms == 0U) {
+        return CONFIG_PLAYER_SD_RECOVERY_RETRY_DELAY_MS;
+    }
+
+    if (current_delay_ms >= CONFIG_PLAYER_SD_RECOVERY_MAX_RETRY_DELAY_MS) {
+        return CONFIG_PLAYER_SD_RECOVERY_MAX_RETRY_DELAY_MS;
+    }
+
+    if (current_delay_ms > (CONFIG_PLAYER_SD_RECOVERY_MAX_RETRY_DELAY_MS / 2U)) {
+        return CONFIG_PLAYER_SD_RECOVERY_MAX_RETRY_DELAY_MS;
+    }
+
+    return current_delay_ms * 2U;
+}
+
+static bool loop_player_should_log_recovery_failure(uint32_t consecutive_failures)
+{
+    if (consecutive_failures <= 3U) {
+        return true;
+    }
+
+    return (consecutive_failures & (consecutive_failures - 1U)) == 0U;
+}
+
+static bool loop_player_should_wait_for_media(uint32_t consecutive_failures)
+{
+    if (CONFIG_PLAYER_SD_ACTIVE_RECOVERY_ATTEMPTS == 0) {
+        return consecutive_failures > 0U;
+    }
+
+    return consecutive_failures >= CONFIG_PLAYER_SD_ACTIVE_RECOVERY_ATTEMPTS;
+}
+
+static uint32_t loop_player_recovery_sd_frequency_khz(uint32_t base_frequency_khz, uint32_t consecutive_failures)
+{
+    uint32_t downclock_frequency_khz = base_frequency_khz;
+    uint32_t halving_steps = consecutive_failures;
+
+    while (halving_steps > 0U && downclock_frequency_khz > CONFIG_PLAYER_SD_RECOVERY_MIN_FREQUENCY_KHZ) {
+        downclock_frequency_khz /= 2U;
+        halving_steps -= 1U;
+    }
+
+    if (downclock_frequency_khz < CONFIG_PLAYER_SD_RECOVERY_MIN_FREQUENCY_KHZ) {
+        downclock_frequency_khz = CONFIG_PLAYER_SD_RECOVERY_MIN_FREQUENCY_KHZ;
+    }
+
+    if (downclock_frequency_khz > base_frequency_khz) {
+        downclock_frequency_khz = base_frequency_khz;
+    }
+
+    return downclock_frequency_khz;
+}
+
+static esp_err_t loop_player_probe_sd_media_once(loop_player_context_t *ctx)
+{
+    struct stat st = {0};
+    FILE *file = NULL;
+    uint8_t probe_buffer[64];
+    int stat_errno = 0;
+    int read_errno = 0;
+    size_t bytes_read = 0;
+    esp_err_t err = audio_sdcard_ensure_mounted(ctx->sdcard);
+
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    errno = 0;
+    if (stat(CONFIG_PLAYER_WAV_PATH, &st) != 0) {
+        stat_errno = errno;
+        if (stat_errno == ENOENT) {
+            return ESP_OK;
+        }
+
+        ESP_LOGW(
+            TAG,
+            "Media probe stat failed for %s: errno=%d (%s)",
+            CONFIG_PLAYER_WAV_PATH,
+            stat_errno,
+            strerror(stat_errno)
+        );
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+
+    errno = 0;
+    file = fopen(CONFIG_PLAYER_WAV_PATH, "rb");
+    if (file == NULL) {
+        int open_errno = errno;
+
+        if (open_errno == ENOENT) {
+            return ESP_OK;
+        }
+
+        ESP_LOGW(
+            TAG,
+            "Media probe open failed for %s: errno=%d (%s)",
+            CONFIG_PLAYER_WAV_PATH,
+            open_errno,
+            strerror(open_errno)
+        );
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+
+    errno = 0;
+    bytes_read = fread(probe_buffer, 1, sizeof(probe_buffer), file);
+    read_errno = errno;
+
+    if (ferror(file) != 0 || (bytes_read == 0 && !feof(file))) {
+        ESP_LOGW(
+            TAG,
+            "Media probe read failed for %s: got=%u errno=%d (%s)",
+            CONFIG_PLAYER_WAV_PATH,
+            (unsigned) bytes_read,
+            read_errno,
+            read_errno != 0 ? strerror(read_errno) : "n/a"
+        );
+        fclose(file);
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+
+    fclose(file);
+    return ESP_OK;
+}
+
+static esp_err_t loop_player_wait_for_sd_stability(loop_player_context_t *ctx)
+{
+    uint32_t stable_check = 0;
+
+    if (CONFIG_PLAYER_SD_RETURN_SETTLE_DELAY_MS > 0) {
+        ESP_LOGI(
+            TAG,
+            "Waiting %u ms for SD card settle before media probes",
+            (unsigned) CONFIG_PLAYER_SD_RETURN_SETTLE_DELAY_MS
+        );
+        vTaskDelay(pdMS_TO_TICKS(CONFIG_PLAYER_SD_RETURN_SETTLE_DELAY_MS));
+    }
+
+    for (stable_check = 0; stable_check < CONFIG_PLAYER_SD_RETURN_STABLE_CHECKS; ++stable_check) {
+        esp_err_t err = loop_player_probe_sd_media_once(ctx);
+
+        if (err != ESP_OK) {
+            return err;
+        }
+
+        if ((stable_check + 1U) < CONFIG_PLAYER_SD_RETURN_STABLE_CHECKS &&
+            CONFIG_PLAYER_SD_RETURN_STABLE_CHECK_INTERVAL_MS > 0) {
+            vTaskDelay(pdMS_TO_TICKS(CONFIG_PLAYER_SD_RETURN_STABLE_CHECK_INTERVAL_MS));
+        }
+    }
+
+    return ESP_OK;
+}
+
+static bool loop_player_is_transient_sdcard_fault(loop_player_context_t *ctx, esp_err_t err)
+{
+    if (err == ESP_ERR_INVALID_RESPONSE || err == ESP_ERR_TIMEOUT) {
+        return true;
+    }
+
+    if (ctx == NULL || ctx->sdcard == NULL || audio_sdcard_is_ready(ctx->sdcard)) {
+        return false;
+    }
+
+    return err != ESP_OK && err != ESP_ERR_INVALID_STATE;
 }
 
 const char *loop_player_state_name(loop_player_state_t state)
@@ -161,6 +358,10 @@ const char *loop_player_state_name(loop_player_state_t state)
             return "playing";
         case LOOP_PLAYER_STATE_PAUSED:
             return "paused";
+        case LOOP_PLAYER_STATE_RECOVERING:
+            return "recovering";
+        case LOOP_PLAYER_STATE_WAITING_FOR_MEDIA:
+            return "waiting_for_media";
         case LOOP_PLAYER_STATE_ERROR:
             return "error";
         default:
@@ -254,7 +455,20 @@ static esp_err_t loop_player_play_once(
 
     file = fopen(CONFIG_PLAYER_WAV_PATH, "rb");
     if (file == NULL) {
-        return ESP_ERR_NOT_FOUND;
+        int open_errno = errno;
+
+        if (open_errno == ENOENT) {
+            return ESP_ERR_NOT_FOUND;
+        }
+
+        ESP_LOGW(
+            TAG,
+            "Failed to open %s: errno=%d (%s)",
+            CONFIG_PLAYER_WAV_PATH,
+            open_errno,
+            strerror(open_errno)
+        );
+        return ESP_ERR_INVALID_RESPONSE;
     }
 
     // Keep the stdio cache in internal RAM so SD reads stay deterministic.
@@ -331,7 +545,22 @@ static esp_err_t loop_player_play_once(
         }
 
         if (bytes_read == 0) {
-            err = ferror(file) ? ESP_FAIL : ESP_OK;
+            int read_errno = errno;
+
+            if (ferror(file) != 0 || !feof(file)) {
+                ESP_LOGW(
+                    TAG,
+                    "Read failure on %s: requested=%u errno=%d (%s) remaining=%u",
+                    CONFIG_PLAYER_WAV_PATH,
+                    (unsigned) bytes_to_read,
+                    read_errno,
+                    read_errno != 0 ? strerror(read_errno) : "n/a",
+                    (unsigned) remaining
+                );
+                err = ESP_ERR_INVALID_RESPONSE;
+            } else {
+                err = ESP_FAIL;
+            }
             break;
         }
 
@@ -388,7 +617,23 @@ static esp_err_t loop_player_play_once(
         remaining -= bytes_read;
 
         if (bytes_read < bytes_to_read) {
-            err = ferror(file) ? ESP_FAIL : ESP_OK;
+            int read_errno = errno;
+
+            if (ferror(file) != 0 || !feof(file)) {
+                ESP_LOGW(
+                    TAG,
+                    "Short read failure on %s: got=%u requested=%u errno=%d (%s) remaining=%u",
+                    CONFIG_PLAYER_WAV_PATH,
+                    (unsigned) bytes_read,
+                    (unsigned) bytes_to_read,
+                    read_errno,
+                    read_errno != 0 ? strerror(read_errno) : "n/a",
+                    (unsigned) remaining
+                );
+                err = ESP_ERR_INVALID_RESPONSE;
+            } else {
+                err = ESP_FAIL;
+            }
             break;
         }
     }
@@ -418,6 +663,12 @@ static void loop_player_task(void *arg)
     float *sample_buffer = NULL;
     int32_t *i2s_buffer = NULL;
     size_t max_frame_count = CONFIG_PLAYER_READ_BUFFER_SIZE / 2;
+    uint32_t sd_remount_count = 0;
+    uint32_t sd_remount_failure_count = 0;
+    uint32_t sd_consecutive_remount_failures = 0;
+    uint32_t sd_recovery_backoff_ms = CONFIG_PLAYER_SD_RECOVERY_RETRY_DELAY_MS;
+    uint32_t sd_recovery_base_frequency_khz = CONFIG_SD_SPI_FREQUENCY_KHZ;
+    loop_player_recovery_mode_t recovery_mode = LOOP_PLAYER_RECOVERY_NONE;
 
     read_buffer = loop_player_alloc_internal(CONFIG_PLAYER_READ_BUFFER_SIZE, "WAV read buffer");
     sample_buffer = loop_player_alloc_internal(max_frame_count * 2 * sizeof(float), "sample buffer");
@@ -433,6 +684,7 @@ static void loop_player_task(void *arg)
     }
 
     xEventGroupSetBits(ctx->events, PLAYER_EVENT_IDLE);
+    loop_player_set_sd_recovery_metrics(ctx, sd_remount_count, sd_remount_failure_count, sd_recovery_backoff_ms);
 
     while (true) {
         EventBits_t control = xEventGroupGetBits(ctx->events);
@@ -445,6 +697,111 @@ static void loop_player_task(void *arg)
 
             while ((xEventGroupGetBits(ctx->events) & PLAYER_EVENT_PAUSE) != 0) {
                 vTaskDelay(pdMS_TO_TICKS(50));
+            }
+
+            continue;
+        }
+
+        if (recovery_mode != LOOP_PLAYER_RECOVERY_NONE) {
+            uint32_t wait_ms = recovery_mode == LOOP_PLAYER_RECOVERY_WAITING_FOR_MEDIA
+                ? CONFIG_PLAYER_SD_WAIT_FOR_MEDIA_POLL_MS
+                : (sd_consecutive_remount_failures > 0U ? sd_recovery_backoff_ms : 0U);
+            const char *status_text = recovery_mode == LOOP_PLAYER_RECOVERY_WAITING_FOR_MEDIA
+                ? "Waiting for SD card"
+                : "Recovering SD card";
+
+            audio_output_stop(&ctx->output);
+            loop_player_set_status(
+                ctx,
+                recovery_mode == LOOP_PLAYER_RECOVERY_WAITING_FOR_MEDIA
+                    ? LOOP_PLAYER_STATE_WAITING_FOR_MEDIA
+                    : LOOP_PLAYER_STATE_RECOVERING,
+                0,
+                0,
+                status_text
+            );
+            loop_player_set_sd_recovery_metrics(ctx, sd_remount_count, sd_remount_failure_count, sd_recovery_backoff_ms);
+
+            if (wait_ms > 0U) {
+                vTaskDelay(pdMS_TO_TICKS(wait_ms));
+            }
+
+            if ((xEventGroupGetBits(ctx->events) & PLAYER_EVENT_PAUSE) != 0) {
+                continue;
+            }
+
+            if (sd_consecutive_remount_failures == 0U) {
+                ESP_LOGW(TAG, "Attempting SD card remount/recovery");
+            } else if (loop_player_should_log_recovery_failure(sd_consecutive_remount_failures + 1U)) {
+                ESP_LOGI(
+                    TAG,
+                    "Attempting SD card remount/recovery (attempt=%lu, current_backoff_ms=%lu, spi=%.2fMHz)",
+                    (unsigned long) (sd_consecutive_remount_failures + 1U),
+                    (unsigned long) sd_recovery_backoff_ms,
+                    (double) loop_player_recovery_sd_frequency_khz(
+                        sd_recovery_base_frequency_khz,
+                        sd_consecutive_remount_failures
+                    ) / 1000.0
+                );
+            }
+
+            audio_sdcard_set_frequency_khz(
+                ctx->sdcard,
+                loop_player_recovery_sd_frequency_khz(
+                    sd_recovery_base_frequency_khz,
+                    sd_consecutive_remount_failures
+                )
+            );
+            err = audio_sdcard_force_remount(ctx->sdcard);
+            if (err == ESP_OK) {
+                err = loop_player_wait_for_sd_stability(ctx);
+            }
+
+            if (err == ESP_OK) {
+                sd_remount_count++;
+                if (sd_consecutive_remount_failures > 0U) {
+                    ESP_LOGI(
+                        TAG,
+                        "SD card remount succeeded after %lu failed attempt(s) at %.2fMHz",
+                        (unsigned long) sd_consecutive_remount_failures,
+                        (double) audio_sdcard_get_frequency_khz(ctx->sdcard) / 1000.0
+                    );
+                }
+
+                sd_recovery_base_frequency_khz = audio_sdcard_get_frequency_khz(ctx->sdcard);
+                if (sd_recovery_base_frequency_khz < CONFIG_SD_SPI_FREQUENCY_KHZ) {
+                    ESP_LOGI(
+                        TAG,
+                        "Latched safer SD SPI recovery base at %.2fMHz until reboot",
+                        (double) sd_recovery_base_frequency_khz / 1000.0
+                    );
+                }
+
+                sd_consecutive_remount_failures = 0;
+                sd_recovery_backoff_ms = CONFIG_PLAYER_SD_RECOVERY_RETRY_DELAY_MS;
+                recovery_mode = LOOP_PLAYER_RECOVERY_NONE;
+                loop_player_set_sd_recovery_metrics(ctx, sd_remount_count, sd_remount_failure_count, sd_recovery_backoff_ms);
+                continue;
+            }
+
+            sd_remount_failure_count++;
+            sd_consecutive_remount_failures++;
+            sd_recovery_backoff_ms = loop_player_next_recovery_backoff_ms(sd_recovery_backoff_ms);
+            recovery_mode = loop_player_should_wait_for_media(sd_consecutive_remount_failures)
+                ? LOOP_PLAYER_RECOVERY_WAITING_FOR_MEDIA
+                : LOOP_PLAYER_RECOVERY_ACTIVE;
+            loop_player_set_sd_recovery_metrics(ctx, sd_remount_count, sd_remount_failure_count, sd_recovery_backoff_ms);
+
+            if (loop_player_should_log_recovery_failure(sd_consecutive_remount_failures)) {
+                ESP_LOGW(
+                    TAG,
+                    "SD card remount failed (attempt=%lu, consecutive_failures=%lu, next_backoff_ms=%lu, spi=%.2fMHz): %s",
+                    (unsigned long) sd_consecutive_remount_failures,
+                    (unsigned long) sd_consecutive_remount_failures,
+                    (unsigned long) sd_recovery_backoff_ms,
+                    (double) audio_sdcard_get_frequency_khz(ctx->sdcard) / 1000.0,
+                    esp_err_to_name(err)
+                );
             }
 
             continue;
@@ -468,6 +825,13 @@ static void loop_player_task(void *arg)
             ctx->status.loop_count += 1;
             ctx->status.sd_ready = audio_sdcard_is_ready(ctx->sdcard);
             xSemaphoreGive(ctx->mutex);
+            continue;
+        }
+
+        if (loop_player_is_transient_sdcard_fault(ctx, err)) {
+            ESP_LOGW(TAG, "Scheduling SD card recovery after transient fault: %s", esp_err_to_name(err));
+            recovery_mode = LOOP_PLAYER_RECOVERY_ACTIVE;
+            loop_player_set_status(ctx, LOOP_PLAYER_STATE_RECOVERING, 0, 0, "Recovering SD card");
             continue;
         }
 
